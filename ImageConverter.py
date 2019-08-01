@@ -10,6 +10,7 @@ class ImageConverter(object):
         self.inputPath = inputPath
         self.oriIm = self.GetImage(self.inputPath)
         self.BrickColors = {}
+        self.BrickColorsInUser = []
 
     def GetImage(self, path):
         im = Image.open(path)
@@ -37,6 +38,7 @@ class ImageConverter(object):
                     elif minDist > dist:
                         minDist = dist
                         closestKey = key
+                self.BrickColorsInUser.append(closestKey)
                 pix[i, j] = (int(self.BrickColors[closestKey][0]), int(self.BrickColors[closestKey][1]), int(self.BrickColors[closestKey][2]))
 
     def NewImage(self, size):
