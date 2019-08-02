@@ -5,7 +5,7 @@ from PIL import Image
 import math
 import csv
 
-class ImageConverter(object):
+class ImageConverter():
     def __init__(self, inputPath):
         self.inputPath = inputPath
         self.oriIm = self.GetImage(self.inputPath)
