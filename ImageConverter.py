@@ -9,19 +9,21 @@ class ImageConverter():
     def __init__(self, inputPath):
         self.inputPath = inputPath
         self.oriIm = self.GetImage(self.inputPath)
+        self.targetIm = self.oriIm.copy()
         self.BrickColors = {}
-        self.BrickColorsInUser = []
+        self.BrickColorsInUse = []
+        self.ConnectedComponets = {}
 
     def GetImage(self, path):
         im = Image.open(path)
         return im
 
     def ResizeImage(self, size):
-        self.oriIm.thumbnail(size)   
+        self.targetIm.thumbnail(size)   
 
     def ConvertImageToBricks(self):
-        pix = self.oriIm.load()
-        xsize, ysize = self.oriIm.size
+        pix = self.targetIm.load()
+        xsize, ysize = self.targetIm.size
         for i in range(xsize):
             for j in range(ysize):
                 r, g, b = pix[i, j]
@@ -38,8 +40,37 @@ class ImageConverter():
                     elif minDist > dist:
                         minDist = dist
                         closestKey = key
-                self.BrickColorsInUser.append(closestKey)
+                self.BrickColorsInUse.append(closestKey)
                 pix[i, j] = (int(self.BrickColors[closestKey][0]), int(self.BrickColors[closestKey][1]), int(self.BrickColors[closestKey][2]))
+        
+    def GetAllConnectedComponents(self):
+        checkedPoints = set([])
+        xsize, ysize = self.targetIm.size
+        pix = pix = self.targetIm.load()
+        for i in range(xsize):
+            for j in range(ysize):
+                if ((i,j) not in checkedPoints):
+                    # Start searching point
+                    checkedPoints.add((i,j))
+                    self.BFS(i, j, self.targetIm.size, checkedPoints, pix)
+
+    def BFS(self, startX, startY, size, checkedPoints, pix):
+        pointsInCurrentComponent = [(startX, startY)]
+        startIndex = 0
+        endIndex = len(pointsInCurrentComponent)
+        while startIndex < endIndex:
+            currentPoint = pointsInCurrentComponent[startIndex]
+            for i in range(-1, 2):
+                for j in range(-1, 2):
+                    newX = currentPoint[0] + i
+                    newY = currentPoint[1] + j
+                    if (newX >= 0 and newY >= 0 and newX < size[0] and newY < size[1]):
+                        if ((newX, newY) not in checkedPoints and pix[currentPoint[0], currentPoint[1]] == pix[newX, newY]):
+                            checkedPoints.add((newX, newY))
+                            pointsInCurrentComponent.append((newX, newY))
+            startIndex += 1
+            endIndex = len(pointsInCurrentComponent)
+            self.ConnectedComponets[(startX, startY)] = pointsInCurrentComponent
 
     def NewImage(self, size):
         im = Image.new('RGB', size, (229, 106, 84))
@@ -56,5 +87,6 @@ if __name__=='__main__':
     imageConverter.GetBrickColors()
     imageConverter.ResizeImage((32, 32))
     imageConverter.ConvertImageToBricks()
-    imageConverter.oriIm.show()
+    imageConverter.GetAllConnectedComponents()
+    imageConverter.targetIm.show()
 
