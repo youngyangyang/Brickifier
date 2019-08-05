@@ -4,6 +4,7 @@
 from PIL import Image
 import math
 import csv
+from copy import deepcopy
 
 class ImageConverter():
     def __init__(self, inputPath):
@@ -12,6 +13,7 @@ class ImageConverter():
         self.targetIm = self.oriIm.copy()
         self.BrickColors = {}
         self.BrickColorsInUse = []
+        self.BrickSizes = []
         self.ConnectedComponets = {}
 
     def GetImage(self, path):
@@ -81,6 +83,36 @@ class ImageConverter():
             csvReader = csv.reader(csvfile)
             for row in csvReader:
                 self.BrickColors[row[1]]= (row[2:])
+
+    def GetBrickSizes(self):
+        with open('BrickSizes.csv', 'r') as csvfile:
+            csvReader = csv.reader(csvfile)
+            for row in csvReader:
+                self.BrickSizes.append((row[1], row[2]))
+    
+    def GetBrickListForConnectedComponent(self, pointsInCurrentComponent):
+        states = {() : 0 }
+        totalSize = len(pointsInCurrentComponent)
+        haveFoundFeasibleSolution = False
+        minBrickCount = totalSize
+        for step in range(1, totalSize + 1):
+            lastStepStates = [x for x in states.keys if len(x) == step - 1]
+            for lastStepState in lastStepStates:
+                availableStartPoint = pointsInCurrentComponent
+                if lastStepState != ():
+                    availableStartPoint = lastStepState
+                for point in availableStartPoint:
+                    for brick in self.BrickSizes:
+                        currentStates = deepcopy(lastStepState)
+                        for i in range(0, brick[0]):
+                            for j in range(0, brick[1]):
+                                currentStates = currentStates + ((point[0] + i, point[1]+j),)
+                        if currentStates == pointsInCurrentComponent:
+                            haveFoundFeasibleSolution = True
+                            if states[lastStepState] + 1 < minBrickCount:
+                                minBrickCount = states[lastStepState] + 1
+                        if currentStates < pointsInCurrentComponent:
+                            states[currentStates] = states[lastStepState] + 1
 
 if __name__=='__main__':
     imageConverter = ImageConverter('Jay.jpg')
