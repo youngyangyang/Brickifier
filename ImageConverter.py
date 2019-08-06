@@ -90,29 +90,42 @@ class ImageConverter():
             for row in csvReader:
                 self.BrickSizes.append((row[1], row[2]))
     
-    def GetBrickListForConnectedComponent(self, pointsInCurrentComponent):
-        states = {() : 0 }
-        totalSize = len(pointsInCurrentComponent)
-        haveFoundFeasibleSolution = False
-        minBrickCount = totalSize
+    def GetBrickListForConnectedComponent(self, pointsInCurrentComponentSet):
+        stateHistory = { () : () }
+        totalSize = len(pointsInCurrentComponentSet)
         for step in range(1, totalSize + 1):
-            lastStepStates = [x for x in states.keys if len(x) == step - 1]
+            # type: a list of sets
+            lastStepStates = [set(x) for x in stateHistory.keys if len(x) == step - 1]
             for lastStepState in lastStepStates:
-                availableStartPoint = pointsInCurrentComponent
-                if lastStepState != ():
-                    availableStartPoint = lastStepState
+                # type: a set of points
+                availableStartPoint = pointsInCurrentComponentSet - lastStepState
                 for point in availableStartPoint:
                     for brick in self.BrickSizes:
-                        currentStates = deepcopy(lastStepState)
+                        # type: a set of points
+                        currentState = deepcopy(lastStepState)
                         for i in range(0, brick[0]):
                             for j in range(0, brick[1]):
-                                currentStates = currentStates + ((point[0] + i, point[1]+j),)
-                        if currentStates == pointsInCurrentComponent:
-                            haveFoundFeasibleSolution = True
-                            if states[lastStepState] + 1 < minBrickCount:
-                                minBrickCount = states[lastStepState] + 1
-                        if currentStates < pointsInCurrentComponent:
-                            states[currentStates] = states[lastStepState] + 1
+                                currentState.add((point[0] + i, point[1]+j))
+                        if currentState == pointsInCurrentComponentSet:
+                            return GetBrickListFromStateHistory(stateHistory, lastStepState, brick)
+                        if currentState < pointsInCurrentComponentSet:
+                            states[currentStates] = lastStepState
+
+    def GetBrickListFromStateHistory(self, stateHistory, lastStepStateSet, lastBrick):
+        brickDict = { lastBrick : 1 }
+        lastStepState = tuple(list(lastStepStateSet))
+        while stateHistory[lastStepState] != ():
+            # a set of points
+            points = lastStepStateSet - tuple(list(stateHistory[lastStepState]))
+            brick = GetBrickFromPoints(points)
+            if brick in brickDict:
+                brickDict[brick] += 1
+            else:
+                brickDict[brick] = 1
+            lastStepState = stateHistory[lastStepState]
+
+    def GetBrickFromPoints(self, points):
+        pass
 
 if __name__=='__main__':
     imageConverter = ImageConverter('Jay.jpg')
