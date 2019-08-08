@@ -91,8 +91,29 @@ class ImageConverter():
             for row in csvReader:
                 self.BrickSizes.append((int(row[0]), int(row[1])))
     
+    def GetBricksFromBrickList(self, brickList, lastBrick):
+        brickDict = { lastBrick : 1 }
+        for brick in brickList:
+            if brick in brickDict:
+                brickDict[brick] += 1
+            else:
+                brickDict[brick] = 1
+        return brickDict
+    
+    def GetBrickListGivenState(self, currentState, stateHistory):
+        currentStep = currentState[0]
+        currentPointsSet = set(currentState[1:])
+        for state, brickList in stateHistory.items():
+            step = state[0]
+            if step != currentStep:
+                pass
+            pointsSet = set(state[1:])
+            if pointsSet == currentPointsSet:
+                return brickList
+        return []
+
     def GetBrickListForConnectedComponent(self, pointsInCurrentComponentSet):
-        stateHistory = { (0,) : () }
+        stateHistory = { (0,) : [] }
         totalSize = len(pointsInCurrentComponentSet)
         for step in range(1, totalSize + 1):
             # type: a list of sets
@@ -100,6 +121,9 @@ class ImageConverter():
             for lastStepState in lastStepStates:
                 # type: a set of points
                 availableStartPoint = pointsInCurrentComponentSet - lastStepState
+                lastStepStateList = list(lastStepState)
+                lastStepStateList.insert(0, step - 1)
+                lastStepStateTuple = tuple(lastStepStateList)
                 for point in availableStartPoint:
                     for brick in self.BrickSizes:
                         # type: a set of points
@@ -108,48 +132,16 @@ class ImageConverter():
                             for j in range(0, brick[1]):
                                 currentState.add((point[0] + i, point[1]+j))
                         if currentState == pointsInCurrentComponentSet:
-                            return self.GetBrickListFromStateHistory(stateHistory, lastStepState, brick, step)
+                            return self.GetBricksFromBrickList(stateHistory[lastStepStateTuple], brick)
                         if currentState < pointsInCurrentComponentSet:
                             if currentState not in [set(x[1:]) for x in stateHistory.keys() if x[0] == step]:
                                 tempCurrentStateList = list(currentState)
                                 tempCurrentStateList.insert(0, step)
-                                tempLastStateList = list(lastStepState)
-                                tempLastStateList.insert(0, step - 1)
-                                stateHistory[tuple(tempCurrentStateList)] = tuple(tempLastStateList) 
-        return None
-    def GetBrickFromPoints(self, points):
-        for brick in self.BrickSizes:
-            if len(points) == brick[0] * brick[1]:
-                minX = min(point[0] for point in points)
-                minY = min(point[1] for point in points)
-                brickMatch = True
-                for i in range(0, brick[0]):
-                    for j in range(0, brick[1]):
-                        if (minX+i, minY) not in points:
-                            brickMatch = False
-                if brickMatch:
-                    return brick
-        return None  
-
-    def GetBrickListFromStateHistory(self, stateHistory, lastStepStateSet, lastBrick, step):
-        brickDict = { lastBrick : 1 }
-        tempLastStateList = list(lastStepStateSet)
-        tempLastStateList.insert(0, step - 1)
-        lastStepState = tuple(tempLastStateList)
-        while lastStepState != (0,):
-            # a set of points
-            points = lastStepStateSet - set(list(stateHistory[lastStepState]))
-            brick = self.GetBrickFromPoints(points)
-            if brick is None:
-                raise AssertionError('cannot find brick')
-            if brick in brickDict:
-                brickDict[brick] += 1
-            else:
-                brickDict[brick] = 1
-            lastStepState = stateHistory[lastStepState]
-            if len(lastStepState) > 1:
-                lastStepState = (step -1, lastStepState[1:])
-        return brickDict
+                                lastStepStateBrickList = deepcopy(self.GetBrickListGivenState(lastStepStateTuple, stateHistory))
+                                lastStepStateBrickList.append(brick)
+                                # value is brick list
+                                stateHistory[tuple(tempCurrentStateList)] = lastStepStateBrickList
+        return None 
 
 if __name__=='__main__':
     imageConverter = ImageConverter('Jay.jpg')
