@@ -92,11 +92,11 @@ class ImageConverter():
                 self.BrickSizes.append((int(row[0]), int(row[1])))
     
     def GetBrickListForConnectedComponent(self, pointsInCurrentComponentSet):
-        stateHistory = { () : () }
+        stateHistory = { (0,) : () }
         totalSize = len(pointsInCurrentComponentSet)
         for step in range(1, totalSize + 1):
             # type: a list of sets
-            lastStepStates = [set(x) for x in stateHistory.keys() if len(x) == step - 1]
+            lastStepStates = [set(x[1:]) for x in stateHistory.keys() if x[0] == step -1]
             for lastStepState in lastStepStates:
                 # type: a set of points
                 availableStartPoint = pointsInCurrentComponentSet - lastStepState
@@ -108,9 +108,14 @@ class ImageConverter():
                             for j in range(0, brick[1]):
                                 currentState.add((point[0] + i, point[1]+j))
                         if currentState == pointsInCurrentComponentSet:
-                            return self.GetBrickListFromStateHistory(stateHistory, lastStepState, brick)
+                            return self.GetBrickListFromStateHistory(stateHistory, lastStepState, brick, step)
                         if currentState < pointsInCurrentComponentSet:
-                            stateHistory[tuple(list(currentState))] = tuple(list(lastStepState)) 
+                            if currentState not in [set(x[1:]) for x in stateHistory.keys() if x[0] == step]:
+                                tempCurrentStateList = list(currentState)
+                                tempCurrentStateList.insert(0, step)
+                                tempLastStateList = list(lastStepState)
+                                tempLastStateList.insert(0, step - 1)
+                                stateHistory[tuple(tempCurrentStateList)] = tuple(tempLastStateList) 
         return None
     def GetBrickFromPoints(self, points):
         for brick in self.BrickSizes:
@@ -126,10 +131,12 @@ class ImageConverter():
                     return brick
         return None  
 
-    def GetBrickListFromStateHistory(self, stateHistory, lastStepStateSet, lastBrick):
+    def GetBrickListFromStateHistory(self, stateHistory, lastStepStateSet, lastBrick, step):
         brickDict = { lastBrick : 1 }
-        lastStepState = tuple(list(lastStepStateSet))
-        while stateHistory[lastStepState] != ():
+        tempLastStateList = list(lastStepStateSet)
+        tempLastStateList.insert(0, step - 1)
+        lastStepState = tuple(tempLastStateList)
+        while lastStepState != (0,):
             # a set of points
             points = lastStepStateSet - set(list(stateHistory[lastStepState]))
             brick = self.GetBrickFromPoints(points)
@@ -140,6 +147,8 @@ class ImageConverter():
             else:
                 brickDict[brick] = 1
             lastStepState = stateHistory[lastStepState]
+            if len(lastStepState) > 1:
+                lastStepState = (step -1, lastStepState[1:])
         return brickDict
 
 if __name__=='__main__':
