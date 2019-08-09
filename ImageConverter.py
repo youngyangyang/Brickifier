@@ -5,75 +5,65 @@ from PIL import Image
 import math
 import csv
 from copy import deepcopy
+from functools import reduce
 import math
 
 class ImageConverter():
     def __init__(self, inputPath):
         self.inputPath = inputPath
         self.oriIm = self.GetImage(self.inputPath)
-        self.targetIm = self.oriIm.copy()
         self.BrickColors = {}
-        self.BrickColorsInUse = []
         self.BrickSizes = []
         self.ConnectedComponets = {}
+        self.TotalBrickDict = {}
 
     def GetImage(self, path):
         im = Image.open(path)
         return im
 
     def ResizeImage(self, size):
-        self.targetIm.thumbnail(size)   
+        self.targetIm = self.oriIm.copy()
+        self.targetIm.thumbnail(size)  
+        self.pix = self.targetIm.load() 
 
     def ConvertImageToBricks(self):
-        pix = self.targetIm.load()
         xsize, ysize = self.targetIm.size
         for i in range(xsize):
             for j in range(ysize):
-                r, g, b = pix[i, j]
+                point = self.pix[i,j]
                 minDist = -1
                 closestKey = ""
                 for key in self.BrickColors:
-                    rr = int(self.BrickColors[key][0])
-                    gg = int(self.BrickColors[key][1])
-                    bb = int(self.BrickColors[key][2])
-                    dist = math.pow(r - rr, 2) + math.pow(g - gg, 2) + math.pow(b - bb, 2)
-                    if minDist < 0 :
+                    brickColor = self.BrickColors[key]
+                    dist = reduce(lambda  x, y: x+y, [x * x for x in [point[k] - brickColor[k] for k in range(0, len(point))]])
+                    if minDist < 0 or minDist > dist:
                         minDist = dist
                         closestKey = key
-                    elif minDist > dist:
-                        minDist = dist
-                        closestKey = key
-                self.BrickColorsInUse.append(closestKey)
-                pix[i, j] = tuple(x for x in self.BrickColors[closestKey])
+                    self.pix[i, j] = self.BrickColors[closestKey]
         
     def GetAllConnectedComponents(self):
         checkedPoints = set([])
         xsize, ysize = self.targetIm.size
-        pix = self.targetIm.load()
-        for i in range(xsize):
-            for j in range(ysize):
-                if ((i,j) not in checkedPoints):
-                    # Start searching point
-                    checkedPoints.add((i,j))
-                    self.BFS(i, j, self.targetIm.size, checkedPoints, pix)
+        for i,j in [(i,j) for i in range(xsize) for j in range(ysize)]:
+            if ((i,j) not in checkedPoints):
+                # Start searching point
+                checkedPoints.add((i,j))
+                self.BFS(i, j, self.targetIm.size, checkedPoints)
 
-    def BFS(self, startX, startY, size, checkedPoints, pix):
+    def BFS(self, startX, startY, size, checkedPoints):
         pointsInCurrentComponent = [(startX, startY)]
         startIndex = 0
         endIndex = len(pointsInCurrentComponent)
         while startIndex < endIndex:
             currentPoint = pointsInCurrentComponent[startIndex]
-            for i in range(-1, 2):
-                for j in range(-1, 2):
-                    newX = currentPoint[0] + i
-                    newY = currentPoint[1] + j
-                    if (newX >= 0 and newY >= 0 and newX < size[0] and newY < size[1]):
-                        if ((newX, newY) not in checkedPoints and pix[currentPoint[0], currentPoint[1]] == pix[newX, newY]):
-                            checkedPoints.add((newX, newY))
-                            pointsInCurrentComponent.append((newX, newY))
+            for newX, newY in [(currentPoint[0] + i, currentPoint[0] + j) for i in range(-1, 2) for j in range(-1, 2)]:
+                if (newX >= 0 and newY >= 0 and newX < size[0] and newY < size[1]):
+                    if ((newX, newY) not in checkedPoints and self.pix[currentPoint[0], currentPoint[1]] == self.pix[newX, newY]):
+                        checkedPoints.add((newX, newY))
+                        pointsInCurrentComponent.append((newX, newY))
             startIndex += 1
             endIndex = len(pointsInCurrentComponent)
-            self.ConnectedComponets[(startX, startY)] = pointsInCurrentComponent
+            self.ConnectedComponets[(startX, startY)] = set(pointsInCurrentComponent)
 
     def NewImage(self, size):
         im = Image.new('RGB', size, (229, 106, 84))
@@ -83,7 +73,7 @@ class ImageConverter():
         with open('BrickColors.csv', 'r') as csvfile:
             csvReader = csv.reader(csvfile)
             for row in csvReader:
-                self.BrickColors[row[1]]= (int(x) for x in row[2:])
+                self.BrickColors[row[1]]= tuple(int(x) for x in row[2:])
 
     def GetBrickSizes(self):
         with open('BrickSizes.csv', 'r') as csvfile:
@@ -105,11 +95,10 @@ class ImageConverter():
         currentPointsSet = set(currentState[1:])
         for state, brickList in stateHistory.items():
             step = state[0]
-            if step != currentStep:
-                pass
-            pointsSet = set(state[1:])
-            if pointsSet == currentPointsSet:
-                return brickList
+            if step == currentStep:
+                pointsSet = set(state[1:])
+                if pointsSet == currentPointsSet:
+                    return brickList
         return []
 
     def GetBrickListForConnectedComponent(self, pointsInCurrentComponentSet):
@@ -132,7 +121,7 @@ class ImageConverter():
                             for j in range(0, brick[1]):
                                 currentState.add((point[0] + i, point[1]+j))
                         if currentState == pointsInCurrentComponentSet:
-                            return self.GetBricksFromBrickList(stateHistory[lastStepStateTuple], brick)
+                            return self.GetBricksFromBrickList(self.GetBrickListGivenState(lastStepStateTuple, stateHistory), brick)
                         if currentState < pointsInCurrentComponentSet:
                             if currentState not in [set(x[1:]) for x in stateHistory.keys() if x[0] == step]:
                                 tempCurrentStateList = list(currentState)
@@ -143,14 +132,26 @@ class ImageConverter():
                                 stateHistory[tuple(tempCurrentStateList)] = lastStepStateBrickList
         return None 
 
+    def GetBrickListForImage(self):
+        TotalBrickDict = {}
+        for startPoint in self.ConnectedComponets:
+            color = list(filter(lambda key: self.BrickColors[key] == self.pix[startPoint[0], startPoint[1]], self.BrickColors))[0]
+            brickDictForCurrentConnectedComponent = self.GetBrickListForConnectedComponent(self.ConnectedComponets[startPoint])
+            if brickDictForCurrentConnectedComponent is not None:
+                for brick in brickDictForCurrentConnectedComponent:
+                    if (brick, color) not in TotalBrickDict:
+                        TotalBrickDict[(brick, color)] = 0
+                    TotalBrickDict[(brick, color)] += brickDictForCurrentConnectedComponent[brick]
+        return TotalBrickDict
 if __name__=='__main__':
     imageConverter = ImageConverter('Jay.jpg')
     imageConverter.GetBrickColors()
     imageConverter.GetBrickSizes()
-    pointsInSet = set([(0,0), (0,1), (0,2), (1,1),(1,2),(1,3)])
-    imageConverter.GetBrickListForConnectedComponent(pointsInSet)
-    #imageConverter.ResizeImage((32, 32))
-    #imageConverter.ConvertImageToBricks()
-    #imageConverter.GetAllConnectedComponents()
-    #imageConverter.targetIm.show()
-
+    #pointsInSet = set([(0,0), (0,1), (0,2), (1,1),(1,2),(1,3)])
+    #imageConverter.GetBrickListForConnectedComponent(pointsInSet)
+    imageConverter.ResizeImage((32, 32))
+    imageConverter.ConvertImageToBricks()
+    imageConverter.GetAllConnectedComponents()
+    imageConverter.targetIm.show()
+    brickDict = imageConverter.GetBrickListForImage()
+    print(len(brickDict))
