@@ -7,6 +7,7 @@ import csv
 from copy import deepcopy
 from functools import reduce
 import math
+import time, threading
 
 class ImageConverter():
     def __init__(self, inputPath):
@@ -14,8 +15,10 @@ class ImageConverter():
         self.oriIm = self.GetImage(self.inputPath)
         self.BrickColors = {}
         self.BrickSizes = []
-        self.ConnectedComponets = {}
+        self.ConnectedComponents = {}
         self.TotalBrickDict = {}
+        self.Matrix = []
+        self.lock = threading.Lock()
 
     def GetImage(self, path):
         im = Image.open(path)
@@ -24,13 +27,15 @@ class ImageConverter():
     def ResizeImage(self, size):
         self.targetIm = self.oriIm.copy()
         self.targetIm.thumbnail(size)  
-        self.pix = self.targetIm.load() 
+        w, h = self.targetIm.size
+        self.Matrix = [[0 for x in range(w)] for y in range(h)] 
 
     def ConvertImageToBricks(self):
-        xsize, ysize = self.targetIm.size
-        for i in range(xsize):
-            for j in range(ysize):
-                point = self.pix[i,j]
+        w, h = self.targetIm.size
+        pix = self.targetIm.load()
+        for i in range(w):
+            for j in range(h):
+                point = pix[i,j]
                 minDist = -1
                 closestKey = ""
                 for key in self.BrickColors:
@@ -39,16 +44,17 @@ class ImageConverter():
                     if minDist < 0 or minDist > dist:
                         minDist = dist
                         closestKey = key
-                    self.pix[i, j] = self.BrickColors[closestKey]
+                    pix[i, j] = self.BrickColors[closestKey]
+                    self.Matrix[j][i] = closestKey
         
     def GetAllConnectedComponents(self):
         checkedPoints = set([])
-        xsize, ysize = self.targetIm.size
-        for i,j in [(i,j) for i in range(xsize) for j in range(ysize)]:
+        w, h = self.targetIm.size
+        for i,j in [(i,j) for i in range(h) for j in range(w)]:
             if ((i,j) not in checkedPoints):
                 # Start searching point
                 checkedPoints.add((i,j))
-                self.BFS(i, j, self.targetIm.size, checkedPoints)
+                self.BFS(i, j, (h, w), checkedPoints)
 
     def BFS(self, startX, startY, size, checkedPoints):
         pointsInCurrentComponent = [(startX, startY)]
@@ -58,12 +64,12 @@ class ImageConverter():
             currentPoint = pointsInCurrentComponent[startIndex]
             for newX, newY in [(currentPoint[0] + i, currentPoint[0] + j) for i in range(-1, 2) for j in range(-1, 2)]:
                 if (newX >= 0 and newY >= 0 and newX < size[0] and newY < size[1]):
-                    if ((newX, newY) not in checkedPoints and self.pix[currentPoint[0], currentPoint[1]] == self.pix[newX, newY]):
+                    if ((newX, newY) not in checkedPoints and self.Matrix[currentPoint[0]][currentPoint[1]] == self.Matrix[newX][newY]):
                         checkedPoints.add((newX, newY))
                         pointsInCurrentComponent.append((newX, newY))
             startIndex += 1
             endIndex = len(pointsInCurrentComponent)
-            self.ConnectedComponets[(startX, startY)] = set(pointsInCurrentComponent)
+            self.ConnectedComponents[(startX, startY)] = set(pointsInCurrentComponent)
 
     def NewImage(self, size):
         im = Image.new('RGB', size, (229, 106, 84))
@@ -115,6 +121,8 @@ class ImageConverter():
                 lastStepStateTuple = tuple(lastStepStateList)
                 for point in availableStartPoint:
                     for brick in self.BrickSizes:
+                        if (len(availableStartPoint) < brick[0] * brick[1]):
+                            continue
                         # type: a set of points
                         currentState = deepcopy(lastStepState)
                         for i in range(0, brick[0]):
@@ -132,26 +140,49 @@ class ImageConverter():
                                 stateHistory[tuple(tempCurrentStateList)] = lastStepStateBrickList
         return None 
 
+    def UpdateTotalBrickDict(self, color, pointsInCurrentComponentSet):
+        try:
+            brickDictForCurrentConnectedComponent = self.GetBrickListForConnectedComponent(pointsInCurrentComponentSet)
+            if brickDictForCurrentConnectedComponent is not None:
+                self.lock.acquire()
+                for brick in brickDictForCurrentConnectedComponent:
+                    if (brick, color) not in self.TotalBrickDict:
+                        self.TotalBrickDict[(brick, color)] = 0
+                    self.TotalBrickDict[(brick, color)] += brickDictForCurrentConnectedComponent[brick]
+        finally:
+            self.lock.release()
+            
     def GetBrickListForImage(self):
         TotalBrickDict = {}
-        for startPoint in self.ConnectedComponets:
-            color = list(filter(lambda key: self.BrickColors[key] == self.pix[startPoint[0], startPoint[1]], self.BrickColors))[0]
-            brickDictForCurrentConnectedComponent = self.GetBrickListForConnectedComponent(self.ConnectedComponets[startPoint])
+        for startPoint in self.ConnectedComponents:
+            color = self.Matrix[startPoint[0]][startPoint[1]]
+            brickDictForCurrentConnectedComponent = self.GetBrickListForConnectedComponent(self.ConnectedComponents[startPoint])
             if brickDictForCurrentConnectedComponent is not None:
                 for brick in brickDictForCurrentConnectedComponent:
                     if (brick, color) not in TotalBrickDict:
                         TotalBrickDict[(brick, color)] = 0
                     TotalBrickDict[(brick, color)] += brickDictForCurrentConnectedComponent[brick]
         return TotalBrickDict
+
+    def GetBrickListForImageMultiThreads(self):
+        threads = []
+        for startPoint in self.ConnectedComponents:
+            color = self.Matrix[startPoint[0]][startPoint[1]]
+            t = threading.Thread(target=self.UpdateTotalBrickDict, args=(color, self.ConnectedComponents[startPoint]))
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
+
 if __name__=='__main__':
     imageConverter = ImageConverter('Jay.jpg')
     imageConverter.GetBrickColors()
     imageConverter.GetBrickSizes()
     #pointsInSet = set([(0,0), (0,1), (0,2), (1,1),(1,2),(1,3)])
     #imageConverter.GetBrickListForConnectedComponent(pointsInSet)
-    imageConverter.ResizeImage((32, 32))
+    imageConverter.ResizeImage((16, 16))
     imageConverter.ConvertImageToBricks()
     imageConverter.GetAllConnectedComponents()
     imageConverter.targetIm.show()
-    brickDict = imageConverter.GetBrickListForImage()
+    brickDict = imageConverter.GetBrickListForImageMultiThreads()
     print(len(brickDict))
