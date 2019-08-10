@@ -108,6 +108,7 @@ class ImageConverter():
         return []
 
     def GetBrickListForConnectedComponent(self, pointsInCurrentComponentSet):
+        # CPU usage is super high, needs improvement
         stateHistory = { (0,) : [] }
         totalSize = len(pointsInCurrentComponentSet)
         for step in range(1, totalSize + 1):
@@ -151,7 +152,7 @@ class ImageConverter():
                     self.TotalBrickDict[(brick, color)] += brickDictForCurrentConnectedComponent[brick]
         finally:
             self.lock.release()
-            
+
     def GetBrickListForImage(self):
         TotalBrickDict = {}
         for startPoint in self.ConnectedComponents:
