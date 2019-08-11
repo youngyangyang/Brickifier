@@ -107,6 +107,47 @@ class ImageConverter():
                     return brickList
         return []
 
+    def GetLeftTopPoint(self, points):
+        x = min([point[0] for point in points])
+        y = min([point[1] for point in points if point[0] == x])
+        return (x, y)
+
+    def CheckIfThisBrickIsGood(self, points, brickList, startPoint, brick, xlen, ylen, availablePoints):
+        currentPointSet = deepcopy(points)
+        currentBrickList = deepcopy(brickList)
+        for i in range(xlen):
+            for j in range(ylen):
+                if (startPoint[0]+i, startPoint[1]+j) not in availablePoints:
+                    return None, None
+                else:
+                    currentPointSet.add((startPoint[0]+i, startPoint[1]+j))
+        currentBrickList.append(brick)
+        return currentPointSet, currentBrickList
+
+    def GetBrickListForConnectedComponent2(self, pointsInCurrentComponentSet):
+        stateHistory = [({}, [])]
+        startIndex = 0
+        endIndex = 1
+        while startIndex < endIndex:
+            lastState = stateHistory[startIndex]
+            # a set of points
+            pointsInLastState = lastState[0]
+            brickListOfLastState = lastState[1]
+            availablePoints = pointsInCurrentComponentSet - pointsInLastState
+            maxBrickSize = len(availablePoints)
+            startPoint = self.GetLeftTopPoint(availablePoints)
+            for brick in self.BrickSizes:
+                if (maxBrickSize >= brick[0] * brick[1]):
+                    (resultState1, resultBrickList1) = self.CheckIfThisBrickIsGood(pointsInLastState, brickListOfLastState, startPoint, brick, brick[0], brick[1], availablePoints)
+                    if resultState1 is not None:
+                        stateHistory.append((resultState1, resultBrickList1))
+                    if brick[0] != brick[1]:
+                        (resultState2, resultBrickList2) = self.CheckIfThisBrickIsGood(pointsInLastState, brickListOfLastState, startPoint, brick, brick[1], brick[0], availablePoints)
+                        if resultState2 is not None:
+                            stateHistory.append((resultState2, resultBrickList2))
+            endIndex = len(stateHistory)
+            startIndex += 1
+
     def GetBrickListForConnectedComponent(self, pointsInCurrentComponentSet):
         # CPU usage is super high, needs improvement
         stateHistory = { (0,) : [] }
